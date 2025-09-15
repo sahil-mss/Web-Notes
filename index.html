@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>WebNote — Notes & To-Do</title>
+  <link rel="stylesheet" href="index.css" />
+</head>
+<body>
+  <div class="app-root">
+
+    <!-- SIDEBAR -->
+    <aside class="sidebar" aria-label="Sidebar">
+      <header class="brand">
+        <h1 id="appTitle" class="app-title">WebNote</h1>
+
+        <!-- View toggle -->
+        <div class="view-toggle" role="tablist" aria-label="Choose view">
+          <button id="notesViewBtn" class="btn toggle active" role="tab" aria-selected="true">Notes</button>
+          <button id="todoViewBtn" class="btn toggle" role="tab" aria-selected="false">To-Do</button>
+        </div>
+
+        <div class="new-note-row">
+          <select id="notePriority" title="Default priority">
+            <option value="High">High</option>
+            <option value="Medium" selected>Medium</option>
+            <option value="Low">Low</option>
+          </select>
+          <button id="newNoteBtn" class="btn primary">Add Note</button>
+        </div>
+      </header>
+
+      <div class="search">
+        <input id="fullTextSearch" type="search" placeholder="Search title or content..." />
+        <input id="tagSearch" type="search" placeholder="Search tags (comma)..." />
+      </div>
+
+      <nav id="notesList" class="notes-list" aria-label="Notes list">
+        <!-- Notes injected here -->
+      </nav>
+
+      <footer class="sidebar-foot">
+        <small>Signed in as <strong>Guest</strong></small>
+      </footer>
+    </aside>
+
+    <!-- MAIN AREA -->
+    <main class="editor-area" aria-live="polite">
+
+      <!-- NOTES PANEL -->
+      <section id="notesView" class="panel active" aria-hidden="false">
+        <div class="editor-header">
+          <input id="noteTitleInput" class="note-title-input" placeholder="Note title..." />
+          <div class="editor-controls">
+            <input id="tagInput" class="tag-input" placeholder="Add tags (comma)" title="Add tags (comma separated)" />
+            <button id="autoSummaryBtn" class="btn">Auto-summary</button>
+            <button id="deleteNoteBtn" class="btn danger">Delete</button>
+            <!-- NEW TTS BUTTON -->
+            <button id="ttsBtn" class="btn secondary">Speak</button>
+          </div>
+        </div>
+
+        <section class="editor-main">
+          <div id="noteContent" class="rich-editor" contenteditable="true" aria-label="Note content">
+            <h2>Welcome to WebNote</h2>
+            <p>Start typing your note here…</p>
+          </div>
+
+          <aside class="inspector">
+            <div class="meta">
+              <h4>Metadata</h4>
+              <dl>
+                <dt>Created</dt><dd id="metaCreated">—</dd>
+                <dt>Updated</dt><dd id="metaUpdated">—</dd>
+                <dt>Priority</dt><dd id="metaPriority">—</dd>
+                <dt>Tags</dt><dd id="metaTags">—</dd>
+              </dl>
+            </div>
+
+            <div class="things-to-remember">
+              <h4>Things to Remember</h4>
+              <ul id="rememberList"></ul>
+              <input id="rememberInput" type="text" placeholder="Add a point..." />
+              <button id="addRememberBtn" class="btn primary">Add</button>
+            </div>
+
+            <div class="attachments">
+              <h4>Attachments</h4>
+              <label class="file-label">
+                <input id="fileInput" type="file" accept="image/*,audio/*" multiple />
+                <span class="file-cta btn">Attach</span>
+              </label>
+              <div id="thumbs" class="thumbs" aria-live="polite"></div>
+            </div>
+          </aside>
+        </section>
+      </section>
+
+      <!-- TODO PANEL -->
+      <section id="todoView" class="panel hidden" aria-hidden="true">
+        <header class="todo-header">
+          <h2>To-Do</h2>
+          <div class="todo-controls">
+            <label class="small">
+              Show:
+              <select id="todoFilterSelect" aria-label="Filter tasks">
+                <option value="all">All</option>
+                <option value="active">Active</option>
+                <option value="completed">Completed</option>
+              </select>
+            </label>
+          </div>
+        </header>
+
+        <section class="todo-main">
+          <form id="todoForm" class="todo-form" onsubmit="return false;">
+            <input id="todoText" type="text" placeholder="Task title..." required />
+            <select id="todoPriority" title="Priority">
+              <option value="High">High</option>
+              <option value="Medium" selected>Medium</option>
+              <option value="Low">Low</option>
+            </select>
+            <input id="todoDeadline" type="datetime-local" title="Optional deadline" />
+            <button id="addTodoBtn" class="btn primary" type="submit">Add</button>
+          </form>
+
+          <ul id="todoList" class="todo-list" aria-live="polite">
+            <!-- tasks injected here -->
+          </ul>
+        </section>
+      </section>
+
+    </main>
+  </div>
+
+  <script src="basic-functions.js" defer></script>
+  <script>
+    // TTS functionality using OpenAI API
+    const ttsBtn = document.getElementById("ttsBtn");
+    ttsBtn.addEventListener("click", async () => {
+      if(!selectedNoteId) return alert("Select a note first.");
+      const note = notes.find(n=>n.id===selectedNoteId);
+      if(!note) return;
+
+      // Strip HTML
+      const text = (note.content||"").replace(/<[^>]+>/g," ").replace(/\s+/g," ").trim();
+      if(!text) return alert("Nothing to speak.");
+
+      ttsBtn.disabled = true;
+      ttsBtn.textContent = "Speaking...";
+
+      try {
+        const res = await fetch("https://api.openai.com/v1/audio/speech", {
+          method: "POST",
+          headers: {
+            "Authorization": "Bearer YOUR_OPENAI_API_KEY",
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            model: "gpt-4o-mini-tts",
+            voice: "alloy",
+            input: text
+          })
+        });
+
+        if(!res.ok) throw new Error("TTS request failed");
+
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+        audio.play();
+      } catch(err) {
+        console.error(err);
+        alert("Failed to speak: " + err.message);
+      } finally {
+        ttsBtn.disabled = false;
+        ttsBtn.textContent = "Speak";
+      }
+    });
+  </script>
+</body>
+</html>
